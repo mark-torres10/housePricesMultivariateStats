@@ -1,0 +1,502 @@
+---
+title: "finalProjectStat363"
+author: "Mark Torres"
+date: "5/3/2019"
+output: html_document
+---
+
+## First, I need to load my data (already did this, so scroll past this)
+
+```{r}
+library(tidyverse)
+```
+
+
+Import the data: 
+```{r}
+data <- read.csv("finalProjectData.csv")
+
+# take out index column
+data <- data[, -1]
+```
+
+## Second, I need to figure out which descriptive plots and summary statistics to show
+
+• Chi-squared quantile plot
+```{r}
+source("http://www.reuningscherer.net/STAT660/R/CSQPlot.r.txt")
+# Chi-square plot of all data
+CSQPlot(data[, c(1:3, 5:8, 10)])
+
+# Chi-square plot, filtering out most expensive homes
+dataTmp <- data[order(data$logSalePrice, decreasing = TRUE), ]
+
+# Get outliers
+source("https://goo.gl/4mthoF") # function to remove outliers
+dataTmp <- outlierKD(data, logSalePrice)
+dataTmp <- outlierKD(dataTmp, TotalSF)
+dataTmp <- outlierKD(dataTmp, LotArea)
+dataTmp <- outlierKD(dataTmp, GrLivArea)
+dataTmp <- na.omit(dataTmp)
+
+newData <- dataTmp
+CSQPlot(newData[, c(1:3, 5:8, 10)])
+
+data <- newData
+```
+
+For low intervals, multivariate normality is met. 
+
+
+• Box plots: Here, I'll just do a couple to provide some demonstrations
+
+```{r}
+## Comparing salePriceCategory to two features
+
+dataTmp <- data
+dataTmp$salePriceCategory <- factor(dataTmp$salePriceCategory, levels = c("Low", "Medium", "High"))
+levels(dataTmp$salePriceCategory)
+data$salePriceCategory <- dataTmp$salePriceCategory
+
+# OverallQual (y) ~ salePriceCategory (x)
+boxplot(OverallQual ~ salePriceCategory, data = data, col = c("red", "blue", "green"),
+        horizontal = TRUE, main = "Overall Quality, by Sale Price Category of the Home")
+
+# logTotalSF (y) ~ salePriceCategory (x)
+boxplot(logTotalSF ~ salePriceCategory, data = data, col = c("red", "blue", "green"), 
+        horizontal = TRUE, main = "log(TotalSF), by Sale Price Category of the Home")
+
+## Comparing BldgType to two features
+# COMBINE twnhs and twnshe to just townhouse
+
+dataTmp$BldgType <- as.character(dataTmp$BldgType)
+dataTmp$BldgType[which(dataTmp$BldgType %in% c("Twnhs", "TwnhsE"))] <- "Townhouse"
+
+dataTmp$BldgType <- factor(dataTmp$BldgType, levels = c("1Fam", "2fmCon", "Duplex", "Townhouse"))
+levels(dataTmp$BldgType)
+table(dataTmp$BldgType)
+data$BldgType <- dataTmp$BldgType
+
+# OverallQual (y) ~ BldgType (x)
+boxplot(OverallQual ~ BldgType, data = data, col = c("red", "blue", "green"),
+        horizontal = TRUE, main = "Overall Quality, by Building Type of the Home", cex.axis = 0.75)
+
+
+# logTotalSF (y) ~ BldgType (x)
+boxplot(logTotalSF ~ BldgType, data = data, col = c("red", "blue", "green"), 
+        horizontal = TRUE, main = "log(TotalSF), by Building Type of the Home", cex.axis = 0.75)
+```
+
+• Correlation matrix (we use this instead of covariance matrix because the data isn't scaled)
+```{r}
+# numeric indices
+numericIndices <- c(1:3, 5:8, 10)
+
+# cor(data[, numericIndices])
+# Create correlations
+correlations <- cor(data[, numericIndices])
+correlations
+
+# hide lower triangle
+# hideLower <- correlations
+# # hideLower[lower.tri(correlations)] <-
+#   
+# hideLower <- as.data.frame(hideLower)
+# hideLower
+# View(hideLower)
+# https://sebastiansauer.github.io/figure_sizing_knitr/
+
+# use correlation matrix from pset 2
+library(corrplot)
+
+correlations <- corrplot.mixed(cor(data[ , numericIndices]), lower.col="black", 
+               upper = "ellipse", tl.col = "black", 
+               number.cex=.7, order = "hclust", tl.pos = "lt", tl.cex=1)
+
+View(correlations)
+```
+
+I will now describe the data as either continuous or categorical. Many of them are on a scale, and I'll treat
+these as continuous for my analysis, but they really could go either way. I choose to treat them as continuous because this eliminates the problem of dealing with too many categories if it were instead a categorical variable. 
+
+```{r}
+variables <- names(data)
+continuousOrCategorical <- c("Continuous", "Continuous", "Continuous", "Categorical", "Continuous", 
+                             "Continuous", "Continuous", "Continuous", "Categorical", "Continuous")
+descriptionOfVariables <- c("Rating of the quality of the home, from 1-10", 
+                            "The total surface area of the home, in square ft.", 
+                            "The (log) sale price of the home, in dollars", 
+                            "The type of building", 
+                            "The area of the lot of the home", 
+                            "The area of the living room/living area", 
+                            "The number of total rooms in the home rated 'above average'", 
+                            "The number of bedrooms in the home rated 'above average", 
+                            "The category of the home, based off sale price. Either 'low', 'medium', or 'high", 
+                            "The (log) total surface area of the home, in square ft.")
+descriptionOfData <- data.frame(Variables = variables, 
+                                Description = descriptionOfVariables,
+                                Type = continuousOrCategorical)
+knitr::kable(descriptionOfData)
+```
+
+I also need to include descriptive statistics. I will do so for my numeric variables. I will calculate:
+• Mean
+• Variance
+• Minimum 
+• Maximum
+
+```{r}
+# create new matrix
+descriptiveStats <- matrix(rep(0, 32), ncol = 4)
+
+# fill in values
+for(i in 1:length(numericIndices)) {
+  # fill in the mean first
+  descriptiveStats[i, 1] <- mean(data[, numericIndices[i]])
+  
+  # now fill in variance
+  descriptiveStats[i, 2] <- var(data[, numericIndices[i]])
+  
+  # now get minimum
+  descriptiveStats[i, 3] <- min(data[, numericIndices[i]])
+  
+  # now get maximum
+  descriptiveStats[i, 4] <- max(data[, numericIndices[i]])
+}
+
+# edit names of columns
+descriptiveStats <- data.frame(descriptiveStats)
+descriptiveStats$categories <- names(data)[numericIndices]
+colnames(descriptiveStats) <- c("Mean", "Variance", "Minimum", "Maximum", "Categories")
+
+# more editing
+descriptiveStats <- descriptiveStats[, c("Categories", "Mean", "Variance", "Minimum", "Maximum")]
+descriptiveStats[, c(2:5)] <- round(descriptiveStats[, c(2:5)], 3)
+
+# now create table
+knitr::kable(descriptiveStats)
+```
+
+## Third, I need to figure out my three multivariate techniques to use
+
+#1. MANOVA:
+
+Make interaction plots: 
+(1) For BldgType and SalePriceCategory, see how it relates to TotalSF
+
+(2) For BldgType and SalePriceCategory, see how it relates to LotArea
+
+```{r}
+# (1): Categorical factors + totalSF
+
+interaction.plot(x.factor = data$salePriceCategory, trace.factor = data$BldgType, 
+                 response = data$TotalSF, 
+                 fun = mean, 
+                 main = "Interaction plot for a home's total surface area", 
+                 xlab = "Category of the home's price", 
+                 ylab = "Total surface area of the home")
+
+# To numerically see what the interactions are:
+with(data, tapply(TotalSF, list(salePriceCategory, BldgType), mean))
+
+# (2): Categorical factors + LotArea
+interaction.plot(x.factor = data$salePriceCategory, trace.factor = data$BldgType, 
+                 response = data$LotArea, 
+                 fun = mean, 
+                 main = "Interaction plot for a home's total lot area", 
+                 xlab = "Category of the home's price", 
+                 ylab = "Total lot area of the home")
+```
+
+Running the MANOVA (univariate, multivariate)
+
+```{r}
+# Univariate
+
+# Fit linear model:
+mod1 <- manova(as.matrix(data[, c("TotalSF", "LotArea")]) ~ data$salePriceCategory + 
+                 data$BldgType + data$BldgType*data$salePriceCategory)
+
+# Get univariate results:
+summary.aov(mod1)
+
+```
+
+```{r}
+# Get multivariate results
+
+# using wilks' test statistic (most common)
+summary.manova(mod1, test = "Wilks") 
+
+# using pillai test statistic (more robust to non-normality of residuals)
+summary.manova(mod1, test = "Pillai") 
+```
+
+Fit univariate contrasts
+
+```{r}
+# Import libraries:
+library(contrast)	
+library(sandwich)	
+
+# Fit linear models
+mod2 <- lm(LotArea ~ salePriceCategory, data = data)
+mod3 <- lm(TotalSF ~ salePriceCategory, data = data)  
+
+# Fit contrasts for logSalePrice
+contrast1 <- contrast(mod2, list(salePriceCategory = "Low"), list(salePriceCategory = "Medium"))
+contrast2 <- contrast(mod2, list(salePriceCategory = "Medium"), list(salePriceCategory = "High"))
+
+print(contrast1, X=TRUE)	
+print(contrast2, X=TRUE)
+
+ # table of means
+aggregate(LotArea ~ salePriceCategory, data = data, FUN = mean)
+
+# Fit contrasts for TotalSF
+contrast3 <- contrast(mod3, list(salePriceCategory = "Low"), list(salePriceCategory = "Medium"))
+contrast4 <- contrast(mod3, list(salePriceCategory = "Medium"), list(salePriceCategory = "High"))
+
+print(contrast3, X = TRUE)
+print(contrast4, X = TRUE)
+
+# table of means
+aggregate(TotalSF ~ salePriceCategory, data = data, FUN = mean)
+```
+
+See if there are any correlations between the variables (continuous vs. continuous)
+
+```{r}
+# OverallQual ~ TotalSF
+boxplot(data$TotalSF ~ data$OverallQual, 
+     main = "Overall Quality of a Home vs. Total Surface Area", 
+     xlab = "Overall Quality", 
+     ylab = "Total Surface Area")
+
+# OverallQual ~ LotArea
+boxplot(data$LotArea ~ data$OverallQual, 
+     main = "Overall Quality of a Home vs. Lot Area", 
+     xlab = "Overall Quality", 
+     ylab = "Lot Area")
+```
+
+
+Fit a GLM
+
+```{r}
+modGLM <- lm(as.matrix(data[, c("TotalSF", "LotArea")]) ~ data$salePriceCategory + data$BldgType + (data$BldgType * data$salePriceCategory) +
+data$OverallQual)
+
+summary(modGLM)
+```
+
+Check chi-squared quantile plot of the residuals
+
+```{r}
+CSQPlot(modGLM$residuals)
+```
+
+#2. Factor Analysis
+
+Calculating correlation matrix, KMO score
+```{r}
+# Extract variables
+FAvariables <- c("TotalSF", "logSalePrice", "TotRmsAbvGrd", "BedroomAbvGr")
+dataFA <- data[, FAvariables]
+
+# Correlation matrix
+cor(dataFA)
+
+# Calculate KMO score
+library(rela)
+kmo_matrix <- paf(as.matrix(dataFA))
+summary(kmo_matrix)
+```
+
+Determining number of latent variables
+
+```{r}
+# Method 1: Scree plot
+pc1 <- princomp(dataFA, cor = TRUE)
+# Create scree plot:
+screeplot(pc1, type = "lines", col = "red", lwd = 2, pch = 19, cex = 1.2,
+          main = "Screen plot of Ames Housing Data")
+
+# Method 2: Eigenvalue > 1
+round(pc1$sdev^2, 2)
+```
+
+Perform factor analysis, determine extraction method
+
+```{r}
+library(psych)
+#### (1) Principal axis factoring (PAF)
+pAFactoring <- fa(dataFA, nfactors = 1, rotation = "none", SMC = TRUE, fm="pa")
+
+# Loading plot for first two factors
+plot(pAFactoring$loadings, pch=18, col='red')
+abline(h=0)
+abline(v=0)
+text(pAFactoring$loadings, labels = names(dataFA),cex=0.8)
+
+#get reproduced correlation matrix
+pAFLoadings <- pAFactoring$loadings %*% t(pAFactoring$loadings)
+
+#residual correlation matrix
+residualsPAF <- cor(dataFA) - pAFLoadings
+
+#get number residuals greater than 0.05 in absolute value
+lenPAF <- length(residualsPAF[upper.tri(residualsPAF)])
+sum(rep(1,lenPAF)[abs(residualsPAF[upper.tri(residualsPAF)])>0.05])
+
+## Getting RMSR:
+RMSR_PAF <- sqrt(sum(residualsPAF[upper.tri(residualsPAF)]^2)/lenPAF)
+
+#### (2) Iterative PCA
+principalComponents <- fa(dataFA, nfactors = 1, rotation = "none", SMC = FALSE, fm = "pa")
+#get reproduced correlation matrix
+pCLoadings <- principalComponents$loadings %*% t(principalComponents$loadings)
+#residual correlation matrix
+residualsPC <- cor(dataFA) - pCLoadings
+# round(residualsPC,2)
+#get number residuals greater than 0.05 in absolute value
+lenPC <- length(residualsPC[upper.tri(residualsPC)])
+sum(rep(1,lenPC)[abs(residualsPC[upper.tri(residualsPC)])>0.05])
+
+## Getting RMSR:
+RMSR_PC <- sqrt(sum(residualsPC[upper.tri(residualsPC)]^2)/lenPC)
+RMSR_Scores <- data.frame(Method = c("Principal Axis Factoring", "Iterative PCA"), 
+              RMSR = c(round(RMSR_PAF, 3), 
+                       round(RMSR_PC, 3)))
+RMSR_Scores
+```
+
+Using varimax rotation and interpreting final factors
+
+```{r}
+# Rotation
+fit <- psych::fa(dataFA, nfactors = 1, 
+                 rotation = "varimax", SMC = TRUE, fm ="pa")
+# Make loading plot
+plot(fit$loadings, pch=18, col='red', 
+     main = "Loading Plot, after applying PAF with varimax rotation", 
+     ylab = "Value of loadings")
+abline(h=0)
+abline(v=0)
+text(fit$loadings, labels = names(dataFA),cex=0.8)
+```
+
+#3. Discriminant Analysis
+
+Evaluating assumptions for discriminant analysis:
+• Multivariate normality: using chi-squared quantile plots
+• Similarity: using covariance matrices
+
+```{r}
+dataDA <- data[, c("salePriceCategory", "TotalSF", "TotRmsAbvGrd", "LotArea")]
+
+### (1) Multivariate normality, using chi-squared quantile plots: 
+# Low: 
+CSQPlot(data[data$salePriceCategory == "Low", c("TotalSF", "TotRmsAbvGrd", "LotArea")], label = "Low")
+
+# Medium: 
+CSQPlot(data[data$salePriceCategory == "Medium", c("TotalSF", "TotRmsAbvGrd", "LotArea")], label = "Medium")
+
+# High: 
+CSQPlot(data[data$salePriceCategory == "High", c("TotalSF", "TotRmsAbvGrd", "LotArea")], label = "High")
+
+### (2) Look at covariance matrices
+
+# Low: 
+cov(data[data$salePriceCategory == "Low", c("TotalSF", "TotRmsAbvGrd", "LotArea")])
+
+# Medium: 
+cov(data[data$salePriceCategory == "Medium", c("TotalSF", "TotRmsAbvGrd", "LotArea")])
+
+# High: 
+cov(data[data$salePriceCategory == "High", c("TotalSF", "TotRmsAbvGrd", "LotArea")])
+```
+
+Performing stepwise discriminant analysis
+
+```{r}
+# import library
+library(klaR)
+
+# fit model
+step <- stepclass(salePriceCategory ~ TotalSF + TotRmsAbvGrd + LotArea, 
+                  data = data, method = "lda", direction = "both")
+step$model
+
+# see correlations between variables
+cor(dataDA[, -1])
+```
+
+Determining whether group means are different: no need, since I already did MANOVA
+
+How many discriminating functions are significant? What is their relative discriminating power?
+
+```{r}
+# Scale the data
+dataDA[, c("TotalSF", "TotRmsAbvGrd", "LotArea")] <- scale(dataDA[, c("TotalSF", "TotRmsAbvGrd", "LotArea")])
+
+# Now we run the LDA:
+pricesLDA <- lda(dataDA[, c("TotalSF", "TotRmsAbvGrd", "LotArea")] , grouping = data$salePriceCategory)
+pricesLDA
+```
+
+What is the discriminating ability of each function (how accurate does it classify)?
+• Regular classification 
+• Leave-one-out cross validation (LOOCV) classification
+
+```{r}
+### (1)  Using regular classification:
+ctraw <- table(True = dataDA$salePriceCategory, Predictions = predict(pricesLDA)$class) 
+ctraw
+# To get percent correct 
+ctrawAccuracy <- round(sum(diag(prop.table(ctraw))),2) # 64% accuracy
+
+### (2) Using LOOCV classification
+pricesLDA_CV <- lda(dataDA$salePriceCategory ~ dataDA$TotalSF + dataDA$TotRmsAbvGrd + dataDA$LotArea, CV = TRUE)
+ctCV <- table(dataDA$salePriceCategory, pricesLDA_CV$class)
+ctCV
+ctCVAccuracy <- round(sum(diag(prop.table(ctCV))),2) # 72% accuracy.
+
+method <- c("Regular", "LOOCV")
+accuracy <- c(ctrawAccuracy, ctCVAccuracy)
+
+discriminatingAbility <- data.frame(Method = method, Accuracy = accuracy)
+discriminatingAbility
+```
+
+Which of the original variables are the "best" discriminators? (see LDA plot, which shows that TotalSF is the best discriminator- this makes sense since it was the only significant predictor)
+
+Plotting and interpreting the discriminant analysis (DA) function scores
+
+```{r}
+### Method 1: 
+# Calculating the scores
+scores <- as.matrix(data[, c("TotalSF",
+                             "TotRmsAbvGrd", 
+                             "LotArea")]) %*% matrix(pricesLDA$scaling, ncol = 2)
+
+# One visualization of the scores:
+partimat(salePriceCategory ~ TotalSF + TotRmsAbvGrd + LotArea, data = data, method = "lda")
+```
+
+
+```{r}
+### Method 2: 
+plot(scores[,1], scores[,2], type="n", main="DCA scores for Homes data",
+     xlab="DCA Axis 1",ylab="DCA Axis 2")
+
+namesGroups = names(summary(dataDA$salePriceCategory)) 
+
+for (i in 1:3){
+  points(scores[dataDA$salePriceCategory == namesGroups[i],1], 
+         scores[dataDA$salePriceCategory == namesGroups[i],2], col=i+1,pch=15+i,cex=1.1)
+}
+
+legend("topright",legend = namesGroups,col=c(2:4),pch=c(15,16,17))
+```
+
